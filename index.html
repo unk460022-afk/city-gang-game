@@ -1,57 +1,103 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-<title>City Gang</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>City Gang Game</title>
 
 <style>
-html,body{
+*{
+    box-sizing:border-box;
+    user-select:none;
+}
+body{
     margin:0;
-    padding:0;
     overflow:hidden;
     background:#111;
-    font-family:Arial;
-    touch-action:none;
+    font-family:Arial,sans-serif;
 }
 canvas{
     display:block;
-    background:#444;
+    background:#292929;
 }
-#ui{
+
+#hud{
+    position:fixed;
+    top:12px;
+    left:12px;
+    color:white;
+    font-size:18px;
+    line-height:1.55;
+    text-shadow:2px 2px #000;
+    z-index:5;
+}
+
+#message{
     position:fixed;
     top:10px;
-    left:10px;
-    color:white;
-    font-size:18px;
-    z-index:5;
-    text-shadow:2px 2px #000;
+    left:50%;
+    transform:translateX(-50%);
+    color:#fff;
+    background:#000b;
+    padding:8px 15px;
+    border-radius:10px;
+    display:none;
+    z-index:10;
 }
-#fire{
+
+.controls{
     position:fixed;
-    right:25px;
-    bottom:35px;
-    width:85px;
-    height:85px;
-    border-radius:50%;
-    border:3px solid white;
-    background:#c62828;
-    color:white;
-    font-size:18px;
+    bottom:25px;
+    left:20px;
+    width:310px;
+    height:190px;
+    z-index:10;
 }
-#up,#down,#left,#right{
-    position:fixed;
-    width:55px;
-    height:55px;
-    border-radius:15px;
+
+.btn{
+    position:absolute;
+    width:70px;
+    height:65px;
     border:2px solid white;
+    border-radius:18px;
     background:#222b;
     color:white;
-    font-size:25px;
+    font-size:28px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
 }
-#up{left:75px;bottom:145px}
-#down{left:75px;bottom:25px}
-#left{left:15px;bottom:85px}
-#right{left:135px;bottom:85px}
+
+.up{left:105px;top:0}
+.left{left:0;top:70px}
+.right{left:210px;top:70px}
+.down{left:105px;top:70px}
+
+#fire{
+    position:fixed;
+    right:30px;
+    bottom:55px;
+    width:115px;
+    height:115px;
+    border-radius:50%;
+    border:4px solid white;
+    background:#c22;
+    color:white;
+    font-size:20px;
+    z-index:10;
+}
+
+#restart{
+    position:fixed;
+    display:none;
+    top:50%;
+    left:50%;
+    transform:translate(-50%,-50%);
+    padding:15px 25px;
+    font-size:20px;
+    border:0;
+    border-radius:12px;
+}
 </style>
 </head>
 
@@ -59,319 +105,173 @@ canvas{
 
 <canvas id="game"></canvas>
 
-<div id="ui">
+<div id="hud">
 ❤️ Health: <span id="health">100</span><br>
 💰 Money: ₹<span id="money">0</span><br>
-🎯 Mission: Defeat <span id="kills">0</span>/10
+🎯 Mission: <span id="mission">0</span>/10<br>
+🔫 Weapon: <span id="weapon">Pistol</span><br>
+⭐ Score: <span id="score">0</span>
 </div>
 
-<button id="up">▲</button>
-<button id="down">▼</button>
-<button id="left">◀</button>
-<button id="right">▶</button>
+<div id="message"></div>
+
+<div class="controls">
+    <div class="btn up" id="up">▲</div>
+    <div class="btn left" id="left">◀</div>
+    <div class="btn down" id="down">▼</div>
+    <div class="btn right" id="right">▶</div>
+</div>
+
 <button id="fire">FIRE</button>
+<button id="restart">RESTART GAME</button>
 
 <script>
-
-const canvas=document.getElementById("game");
-const ctx=canvas.getContext("2d");
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
 
 function resize(){
-    canvas.width=innerWidth;
-    canvas.height=innerHeight;
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
 }
 resize();
-addEventListener("resize",resize);
+window.addEventListener("resize",resize);
 
-let player={
-    x:canvas.width/2,
-    y:canvas.height/2,
+let player = {
+    x: canvas.width/2,
+    y: canvas.height/2,
+    size:22,
     speed:4,
-    health:100
+    health:100,
+    money:0,
+    score:0
 };
 
-let money=0;
-let kills=0;
-
+let enemies=[];
+let bullets=[];
+let npcs=[];
 let keys={};
 
-document.addEventListener("keydown",e=>{
+let mission=0;
+let gameOver=false;
+let weapon="Pistol";
+
+const healthText=document.getElementById("health");
+const moneyText=document.getElementById("money");
+const missionText=document.getElementById("mission");
+const scoreText=document.getElementById("score");
+const weaponText=document.getElementById("weapon");
+const message=document.getElementById("message");
+
+/* ---------------- CONTROLS ---------------- */
+
+window.addEventListener("keydown",e=>{
     keys[e.key.toLowerCase()]=true;
+
+    if(e.key===" "){
+        shoot();
+    }
+
+    if(e.key.toLowerCase()==="e"){
+        interact();
+    }
+
+    if(e.key.toLowerCase()==="q"){
+        changeWeapon();
+    }
 });
 
-document.addEventListener("keyup",e=>{
+window.addEventListener("keyup",e=>{
     keys[e.key.toLowerCase()]=false;
 });
 
-function hold(button,key){
+/* Mobile buttons */
 
-    button.addEventListener("touchstart",e=>{
+function holdButton(id,key){
+    const b=document.getElementById(id);
+
+    b.addEventListener("touchstart",e=>{
         e.preventDefault();
         keys[key]=true;
     });
 
-    button.addEventListener("touchend",e=>{
+    b.addEventListener("touchend",e=>{
         e.preventDefault();
         keys[key]=false;
     });
 }
 
-hold(document.getElementById("up"),"w");
-hold(document.getElementById("down"),"s");
-hold(document.getElementById("left"),"a");
-hold(document.getElementById("right"),"d");
+holdButton("up","w");
+holdButton("down","s");
+holdButton("left","a");
+holdButton("right","d");
 
-let enemies=[];
-
-function spawnEnemy(){
-
-    enemies.push({
-        x:Math.random()*canvas.width,
-        y:Math.random()*canvas.height,
-        health:50,
-        speed:1
-    });
-}
-
-for(let i=0;i<10;i++){
-    spawnEnemy();
-}
-
-let bullets=[];
-
-function shoot(){
-
-    if(enemies.length===0)return;
-
-    let target=null;
-    let distance=9999;
-
-    for(let enemy of enemies){
-
-        let dx=enemy.x-player.x;
-        let dy=enemy.y-player.y;
-
-        let d=Math.sqrt(dx*dx+dy*dy);
-
-        if(d<distance){
-            distance=d;
-            target=enemy;
-        }
-    }
-
-    if(target){
-
-        let dx=target.x-player.x;
-        let dy=target.y-player.y;
-        let d=Math.sqrt(dx*dx+dy*dy);
-
-        bullets.push({
-            x:player.x,
-            y:player.y,
-            vx:dx/d*9,
-            vy:dy/d*9
-        });
-    }
-}
-
-let firing=false;
-
-const fireButton=document.getElementById("fire");
-
-fireButton.addEventListener("touchstart",e=>{
+document.getElementById("fire").addEventListener("touchstart",e=>{
     e.preventDefault();
-    firing=true;
+    shoot();
 });
 
-fireButton.addEventListener("touchend",e=>{
-    e.preventDefault();
-    firing=false;
-});
+document.getElementById("fire").addEventListener("click",shoot);
 
-fireButton.addEventListener("mousedown",()=>{
-    firing=true;
-});
-
-fireButton.addEventListener("mouseup",()=>{
-    firing=false;
-});
-
-let lastShot=0;
-
-function update(){
-
-    if(keys["w"]||keys["arrowup"])
-        player.y-=player.speed;
-
-    if(keys["s"]||keys["arrowdown"])
-        player.y+=player.speed;
-
-    if(keys["a"]||keys["arrowleft"])
-        player.x-=player.speed;
-
-    if(keys["d"]||keys["arrowright"])
-        player.x+=player.speed;
-
-    player.x=Math.max(20,Math.min(canvas.width-20,player.x));
-    player.y=Math.max(20,Math.min(canvas.height-20,player.y));
-
-    if(firing && Date.now()-lastShot>300){
-        shoot();
-        lastShot=Date.now();
-    }
-
-    for(let b of bullets){
-        b.x+=b.vx;
-        b.y+=b.vy;
-    }
-
-    for(let enemy of enemies){
-
-        let dx=player.x-enemy.x;
-        let dy=player.y-enemy.y;
-        let d=Math.sqrt(dx*dx+dy*dy);
-
-        if(d>25){
-
-            enemy.x+=dx/d*enemy.speed;
-            enemy.y+=dy/d*enemy.speed;
-
-        }else{
-
-            player.health-=0.15;
-
-        }
-    }
-
-    for(let i=enemies.length-1;i>=0;i--){
-
-        for(let j=bullets.length-1;j>=0;j--){
-
-            let dx=enemies[i].x-bullets[j].x;
-            let dy=enemies[i].y-bullets[j].y;
-
-            if(Math.sqrt(dx*dx+dy*dy)<20){
-
-                enemies[i].health-=25;
-                bullets.splice(j,1);
-
-                if(enemies[i].health<=0){
-
-                    enemies.splice(i,1);
-
-                    kills++;
-                    money+=100;
-
-                    spawnEnemy();
-
-                    break;
-                }
-            }
-        }
-    }
-
-    document.getElementById("health").textContent=
-        Math.max(0,Math.floor(player.health));
-
-    document.getElementById("money").textContent=money;
-
-    document.getElementById("kills").textContent=
-        Math.min(kills,10);
-
-    if(player.health<=0){
-
-        alert("GAME OVER");
-
-        location.reload();
-    }
-
-    if(kills>=10){
-
-        alert("MISSION COMPLETE! You earned ₹1000");
-
-        money+=1000;
-        kills=0;
-    }
-}
+/* ---------------- CITY ---------------- */
 
 function drawCity(){
 
-    ctx.fillStyle="#555";
+    ctx.fillStyle="#303030";
     ctx.fillRect(0,0,canvas.width,canvas.height);
 
-    // Roads
+    /* Roads */
 
-    ctx.fillStyle="#333";
+    ctx.fillStyle="#222";
+    ctx.fillRect(canvas.width/2-110,0,220,canvas.height);
+    ctx.fillRect(0,canvas.height/2-110,canvas.width,220);
 
-    ctx.fillRect(0,canvas.height/2-70,
-                 canvas.width,140);
+    /* Buildings */
 
-    ctx.fillRect(canvas.width/2-70,0,
-                 140,canvas.height);
+    ctx.fillStyle="#555";
 
-    // Buildings
-
-    ctx.fillStyle="#777";
-
-    for(let x=20;x<canvas.width;x+=150){
-
-        for(let y=20;y<canvas.height;y+=150){
+    for(let x=0;x<canvas.width;x+=250){
+        for(let y=0;y<canvas.height;y+=220){
 
             if(
-                Math.abs(x-canvas.width/2)>100 &&
-                Math.abs(y-canvas.height/2)>100
-            ){
+                x>canvas.width/2-150 &&
+                x<canvas.width/2+150
+            ) continue;
 
-                ctx.fillRect(x,y,100,90);
+            if(
+                y>canvas.height/2-150 &&
+                y<canvas.height/2+150
+            ) continue;
 
-            }
+            ctx.fillRect(x+15,y+15,190,160);
         }
     }
-}
 
-function draw(){
+    /* Road lines */
 
-    drawCity();
-
-    // Bullets
-
-    ctx.fillStyle="yellow";
-
-    for(let b of bullets){
-
-        ctx.beginPath();
-        ctx.arc(b.x,b.y,5,0,Math.PI*2);
-        ctx.fill();
-    }
-
-    // Enemies
-
-    for(let enemy of enemies){
-
-        ctx.fillStyle="red";
-
-        ctx.beginPath();
-        ctx.arc(enemy.x,enemy.y,18,0,Math.PI*2);
-        ctx.fill();
-
-        ctx.fillStyle="black";
-        ctx.fillRect(enemy.x-15,enemy.y-27,30,4);
-
-        ctx.fillStyle="lime";
-        ctx.fillRect(
-            enemy.x-15,
-            enemy.y-27,
-            30*(enemy.health/50),
-            4
-        );
-    }
-
-    // Player
-
-    ctx.fillStyle="blue";
+    ctx.strokeStyle="#777";
+    ctx.setLineDash([25,20]);
+    ctx.lineWidth=3;
 
     ctx.beginPath();
-    ctx.arc(player.x,player.y,20,0,Math.PI*2);
+    ctx.moveTo(canvas.width/2,0);
+    ctx.lineTo(canvas.width/2,canvas.height);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(0,canvas.height/2);
+    ctx.lineTo(canvas.width,canvas.height/2);
+    ctx.stroke();
+
+    ctx.setLineDash([]);
+}
+
+/* ---------------- PLAYER ---------------- */
+
+function drawPlayer(){
+
+    ctx.beginPath();
+    ctx.fillStyle="blue";
+    ctx.arc(player.x,player.y,player.size,0,Math.PI*2);
     ctx.fill();
 
     ctx.fillStyle="white";
@@ -380,16 +280,385 @@ function draw(){
     ctx.fillText("YOU",player.x,player.y+4);
 }
 
+/* ---------------- ENEMIES ---------------- */
+
+function spawnEnemy(){
+
+    let side=Math.floor(Math.random()*4);
+    let x,y;
+
+    if(side===0){
+        x=Math.random()*canvas.width;
+        y=30;
+    }
+    else if(side===1){
+        x=canvas.width-30;
+        y=Math.random()*canvas.height;
+    }
+    else if(side===2){
+        x=Math.random()*canvas.width;
+        y=canvas.height-30;
+    }
+    else{
+        x=30;
+        y=Math.random()*canvas.height;
+    }
+
+    enemies.push({
+        x:x,
+        y:y,
+        size:22,
+        health:50,
+        speed:1+Math.random()*0.6
+    });
+}
+
+function drawEnemy(e){
+
+    ctx.beginPath();
+    ctx.fillStyle="red";
+    ctx.arc(e.x,e.y,e.size,0,Math.PI*2);
+    ctx.fill();
+
+    /* health bar */
+
+    ctx.fillStyle="lime";
+    ctx.fillRect(
+        e.x-25,
+        e.y-32,
+        Math.max(0,e.health)/2,
+        5
+    );
+}
+
+/* ---------------- FEMALE NPCs ---------------- */
+
+function spawnNPC(){
+
+    npcs.push({
+        x:Math.random()*canvas.width,
+        y:Math.random()*canvas.height,
+        size:18,
+        name:"Girl"
+    });
+}
+
+function drawNPC(n){
+
+    /* head */
+
+    ctx.beginPath();
+    ctx.fillStyle="#f2b28d";
+    ctx.arc(n.x,n.y-18,9,0,Math.PI*2);
+    ctx.fill();
+
+    /* hair */
+
+    ctx.beginPath();
+    ctx.fillStyle="#3b2115";
+    ctx.arc(n.x,n.y-21,10,Math.PI,Math.PI*2);
+    ctx.fill();
+
+    /* body */
+
+    ctx.fillStyle="#e85aa0";
+    ctx.fillRect(n.x-10,n.y-8,20,28);
+
+    ctx.fillStyle="white";
+    ctx.font="11px Arial";
+    ctx.textAlign="center";
+    ctx.fillText(n.name,n.x,n.y+42);
+}
+
+/* ---------------- SHOOTING ---------------- */
+
+function shoot(){
+
+    if(gameOver)return;
+
+    let nearest=null;
+    let dist=Infinity;
+
+    enemies.forEach(e=>{
+        let d=Math.hypot(e.x-player.x,e.y-player.y);
+
+        if(d<dist){
+            dist=d;
+            nearest=e;
+        }
+    });
+
+    if(!nearest)return;
+
+    let angle=Math.atan2(
+        nearest.y-player.y,
+        nearest.x-player.x
+    );
+
+    bullets.push({
+        x:player.x,
+        y:player.y,
+        dx:Math.cos(angle)*9,
+        dy:Math.sin(angle)*9,
+        damage:25
+    });
+}
+
+/* ---------------- BULLETS ---------------- */
+
+function updateBullets(){
+
+    bullets.forEach(b=>{
+        b.x+=b.dx;
+        b.y+=b.dy;
+    });
+
+    bullets=bullets.filter(b=>
+        b.x>0 &&
+        b.x<canvas.width &&
+        b.y>0 &&
+        b.y<canvas.height
+    );
+}
+
+function drawBullets(){
+
+    bullets.forEach(b=>{
+        ctx.beginPath();
+        ctx.fillStyle="yellow";
+        ctx.arc(b.x,b.y,5,0,Math.PI*2);
+        ctx.fill();
+    });
+}
+
+/* ---------------- COLLISION ---------------- */
+
+function distance(a,b){
+    return Math.hypot(a.x-b.x,a.y-b.y);
+}
+
+function updateEnemies(){
+
+    enemies.forEach(e=>{
+
+        let angle=Math.atan2(
+            player.y-e.y,
+            player.x-e.x
+        );
+
+        e.x+=Math.cos(angle)*e.speed;
+        e.y+=Math.sin(angle)*e.speed;
+
+        if(distance(e,player)<40){
+
+            player.health-=0.25;
+
+            if(player.health<=0){
+                endGame();
+            }
+        }
+    });
+
+    bullets.forEach(b=>{
+
+        enemies.forEach(e=>{
+
+            if(distance(b,e)<25){
+
+                e.health-=b.damage;
+                b.x=-999;
+
+                if(e.health<=0){
+
+                    player.money+=100;
+                    player.score+=10;
+                    mission++;
+
+                    showMessage("Enemy defeated! +₹100");
+
+                }
+            }
+        });
+    });
+
+    enemies=enemies.filter(e=>e.health>0);
+
+    while(enemies.length<6 && !gameOver){
+        spawnEnemy();
+    }
+}
+
+/* ---------------- MOVEMENT ---------------- */
+
+function updatePlayer(){
+
+    let dx=0;
+    let dy=0;
+
+    if(keys["w"] || keys["arrowup"])dy--;
+    if(keys["s"] || keys["arrowdown"])dy++;
+    if(keys["a"] || keys["arrowleft"])dx--;
+    if(keys["d"] || keys["arrowright"])dx++;
+
+    if(dx!==0 || dy!==0){
+
+        let len=Math.hypot(dx,dy);
+
+        dx/=len;
+        dy/=len;
+
+        player.x+=dx*player.speed;
+        player.y+=dy*player.speed;
+    }
+
+    player.x=Math.max(25,
+        Math.min(canvas.width-25,player.x));
+
+    player.y=Math.max(25,
+        Math.min(canvas.height-25,player.y));
+}
+
+/* ---------------- NPC INTERACTION ---------------- */
+
+function interact(){
+
+    npcs.forEach(n=>{
+
+        if(distance(player,n)<70){
+
+            player.money+=50;
+            showMessage("NPC helped you! +₹50");
+        }
+    });
+}
+
+/* ---------------- WEAPON ---------------- */
+
+function changeWeapon(){
+
+    if(weapon==="Pistol"){
+        weapon="Shotgun";
+    }
+    else if(weapon==="Shotgun"){
+        weapon="SMG";
+    }
+    else{
+        weapon="Pistol";
+    }
+
+    weaponText.textContent=weapon;
+    showMessage("Weapon changed: "+weapon);
+}
+
+/* ---------------- MESSAGE ---------------- */
+
+function showMessage(text){
+
+    message.textContent=text;
+    message.style.display="block";
+
+    setTimeout(()=>{
+        message.style.display="none";
+    },1500);
+}
+
+/* ---------------- GAME OVER ---------------- */
+
+function endGame(){
+
+    gameOver=true;
+    showMessage("GAME OVER");
+
+    document.getElementById("restart").style.display="block";
+}
+
+document.getElementById("restart").onclick=()=>{
+
+    player.health=100;
+    player.money=0;
+    player.score=0;
+
+    mission=0;
+    enemies=[];
+    bullets=[];
+
+    gameOver=false;
+
+    document.getElementById("restart").style.display="none";
+
+    for(let i=0;i<6;i++){
+        spawnEnemy();
+    }
+};
+
+/* ---------------- HUD ---------------- */
+
+function updateHUD(){
+
+    healthText.textContent=Math.max(0,
+        Math.floor(player.health));
+
+    moneyText.textContent=player.money;
+
+    missionText.textContent=Math.min(
+        mission,10);
+
+    scoreText.textContent=player.score;
+}
+
+/* ---------------- GAME LOOP ---------------- */
+
 function gameLoop(){
 
-    update();
-    draw();
+    drawCity();
+
+    if(!gameOver){
+
+        updatePlayer();
+        updateBullets();
+        updateEnemies();
+
+        npcs.forEach(drawNPC);
+        enemies.forEach(drawEnemy);
+
+        drawBullets();
+        drawPlayer();
+
+        updateHUD();
+
+        if(mission>=10){
+
+            showMessage("🏆 MISSION COMPLETE!");
+
+            mission=0;
+            player.money+=1000;
+        }
+    }
+    else{
+
+        enemies.forEach(drawEnemy);
+        npcs.forEach(drawNPC);
+        drawPlayer();
+    }
 
     requestAnimationFrame(gameLoop);
+}
+
+/* Initial NPCs */
+
+for(let i=0;i<5;i++){
+    spawnNPC();
+}
+
+/* Initial enemies */
+
+for(let i=0;i<6;i++){
+    spawnEnemy();
 }
 
 gameLoop();
 
 </script>
+
 </body>
 </html>
